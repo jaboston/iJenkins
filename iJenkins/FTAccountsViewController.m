@@ -23,6 +23,8 @@
 @property (nonatomic, strong) NSMutableDictionary *reachabilityCache;
 @property (nonatomic, strong) NSMutableDictionary *reachabilityStatusCache;
 
+@property (nonatomic, strong) NSTimer *reachabilityTimer;
+
 @end
 
 
@@ -83,6 +85,14 @@
     [super viewWillAppear:animated];
     
     [FTAPIConnector stopLoadingAll];
+}
+
+- (void)viewDidAppear:(BOOL)animated{
+    if(_reachabilityTimer){
+        [_reachabilityTimer invalidate];
+        _reachabilityTimer = nil;
+    }
+    [self startRefreshTimer];
 }
 
 #pragma mark Actions
@@ -193,7 +203,7 @@
     return cell;
 }
 
-- (UITableViewCell *)accountCellForIndexPath:(NSIndexPath *)indexPath {
+- (UITableViewCell *)accountCellForIndexPath:(NSIndexPath *)indexPath{
     static NSString *identifier = @"accountCell";
     FTAccountCell *cell = [super.tableView dequeueReusableCellWithIdentifier:identifier];
     if (!cell) {
@@ -206,12 +216,26 @@
     else {
         [cell setAccessoryType:UITableViewCellAccessoryDisclosureIndicator];
     }
-    __block FTAccount *acc = (indexPath.section == 0) ? [_data objectAtIndex:indexPath.row] : [_demoAccounts objectAtIndex:indexPath.row];
+// pasted
+    [self checkReachabilityForItemAtIndexPath:indexPath AndCell:cell];
+    
+    //  Status of the server
+    return cell;
+}
+
+
+
+- (void)checkReachabilityForItemAtIndexPath:(NSIndexPath *)indexPath
+                                    AndCell:(FTAccountCell *)cell{
+    
+    __block FTAccount *nbacc = (indexPath.section == 0) ? [_data objectAtIndex:indexPath.row] : [_demoAccounts objectAtIndex:indexPath.row];
+    
+    __block FTAccount *acc = nbacc;
+    
     [cell.textLabel setText:acc.name];
     NSString *port = (acc.port != 0) ? [NSString stringWithFormat:@":%d", acc.port] : @"";
     [cell.detailTextLabel setText:[NSString stringWithFormat:@"%@%@", acc.host, port]];
     
-    //  Status of the server
     NSNumber *key = @([acc hash]);
     NSNumber *statusNumber = _reachabilityStatusCache[key];
     
@@ -235,24 +259,23 @@
                     
                     // TODO: Finish the API request to check server API, not just reachability
                     /*
-                    [kAccountsManager setSelectedAccount:acc];
-                    FTAPIOverallLoadDataObject *loadObject = [[FTAPIOverallLoadDataObject alloc] init];
-                    [FTAPIConnector connectWithObject:loadObject andOnCompleteBlock:^(id<FTAPIDataAbstractObject> dataObject, NSError *error) {
-                        if (error) {
-                            s = FTAccountCellReachabilityStatusUnreachable;
-                        }
-                        else {
-                            s = FTAccountCellReachabilityStatusReachable;
-                        }
-                        _reachabilityStatusCache[key] = @(s);
-                        [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
-                    }];
+                     [kAccountsManager setSelectedAccount:acc];
+                     FTAPIOverallLoadDataObject *loadObject = [[FTAPIOverallLoadDataObject alloc] init];
+                     [FTAPIConnector connectWithObject:loadObject andOnCompleteBlock:^(id<FTAPIDataAbstractObject> dataObject, NSError *error) {
+                     if (error) {
+                     s = FTAccountCellReachabilityStatusUnreachable;
+                     }
+                     else {
+                     s = FTAccountCellReachabilityStatusReachable;
+                     }
+                     _reachabilityStatusCache[key] = @(s);
+                     [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+                     }];
                      */
                 }
             }];
         }
     }
-    
     if (statusNumber) {
         cell.reachabilityStatus = [statusNumber unsignedIntegerValue];
     }
@@ -260,9 +283,40 @@
         cell.reachabilityStatus = FTAccountCellReachabilityStatusLoading;
         _reachabilityStatusCache[key] = @(FTAccountCellReachabilityStatusLoading);
     }
-    
-    return cell;
 }
+
+- (void )startRefreshTimer{
+    _reachabilityTimer = [NSTimer scheduledTimerWithTimeInterval:3.0
+                                     target:self
+                                   selector:@selector(timerRun)
+                                   userInfo:nil
+                                    repeats:YES];
+    
+}
+
+- (void )timerRun {
+    
+    NSMutableArray *cells = [[NSMutableArray alloc] init];
+    for (NSInteger j = 0; j < [self.tableView numberOfSections]; ++j)
+    {
+        for (NSInteger i = 0; i < [self.tableView numberOfRowsInSection:j]; ++i)
+        {
+            if(j == 1){
+            [cells addObject:[self.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:i inSection:j]]];
+            }
+        }
+    }
+    
+    for(int i = 0; i < [cells count]; i++){
+        [self checkReachabilityForItemAtIndexPath:[NSIndexPath indexPathForRow:i inSection:1] AndCell:[cells objectAtIndex:i]];
+        NSLog(@"i is: %i", i);
+    }
+
+    
+    [self.tableView reloadData];
+}
+
+
 
 - (FTBasicCell *)cellForAboutSection:(NSIndexPath *)indexPAth {
     static NSString *identifier = @"aboutSectionCell";
@@ -349,6 +403,7 @@
 - (void)addAccountViewControllerCloseWithoutSave:(FTAddAccountViewController *)controller {
     [self dismissViewControllerAnimated:YES completion:^{
         [controller resetAccountToOriginalStateIfNotNew];
+        
     }];
 }
 
