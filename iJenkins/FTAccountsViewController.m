@@ -226,7 +226,7 @@
 
 
 - (void)checkReachabilityForItemAtIndexPath:(NSIndexPath *)indexPath
-                                    AndCell:(FTAccountCell *)cell{
+                                    AndCell:(FTAccountCell *)cell {
     
     __block FTAccount *nbacc = (indexPath.section == 0) ? [_data objectAtIndex:indexPath.row] : [_demoAccounts objectAtIndex:indexPath.row];
     
@@ -243,19 +243,29 @@
         GCNetworkReachability *r = _reachabilityCache[acc.host];
         if (!r) {
             r = [GCNetworkReachability reachabilityWithHostName:acc.host];
+            //  set the reachability cache to nil to get an update constantly.
+            
             if (!_reachabilityCache) {
                 _reachabilityCache = [NSMutableDictionary dictionary];
             }
+            
             _reachabilityCache[acc.host] = r;
             [r startMonitoringNetworkReachabilityWithHandler:^(GCNetworkReachabilityStatus status) {
-                __block FTAccountCellReachabilityStatus s = (status == GCNetworkReachabilityStatusNotReachable) ? FTAccountCellReachabilityStatusUnreachable : FTAccountCellReachabilityStatusReachable;
+                __block FTAccountCellReachabilityStatus s = (status == GCNetworkReachabilityStatusNotReachable) ? FTAccountCellReachabilityStatusUnreachable : FTAccountCellReachabilityStatusReachable ;
                 if (status == GCNetworkReachabilityStatusNotReachable) {
                     _reachabilityStatusCache[key] = @(s);
                     [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+                    
+                    // **remove this comment once fixed** - Once the status becomes unreachable this block does not ever seem to be called again. Problem with logic?
+                    // **SOLVED** - solution was to refresh the reachability cache. set reachability cache everytime the timer is updated to nil so it refreshes the reachability.
+                    
+                    NSLog(@"status is not reachable. ");
                 }
                 else {
+                    NSLog(@"status is reachable. ");
                     _reachabilityStatusCache[key] = @(s);
                     [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+                   
                     
                     // TODO: Finish the API request to check server API, not just reachability
                     /*
@@ -283,9 +293,11 @@
         cell.reachabilityStatus = FTAccountCellReachabilityStatusLoading;
         _reachabilityStatusCache[key] = @(FTAccountCellReachabilityStatusLoading);
     }
+    
+    
 }
 
-- (void )startRefreshTimer{
+- (void )startRefreshTimer {
     _reachabilityTimer = [NSTimer scheduledTimerWithTimeInterval:3.0
                                      target:self
                                    selector:@selector(timerRun)
@@ -295,25 +307,50 @@
 }
 
 - (void )timerRun {
+    // set reachability cache to nil so it refreshes the reachability
+    _reachabilityCache = nil;
     
-    NSMutableArray *cells = [[NSMutableArray alloc] init];
+    // cells in section 1.
+    NSMutableArray *cells;
+    // cells in section 0
+    NSMutableArray *cellsS0;
+    
     for (NSInteger j = 0; j < [self.tableView numberOfSections]; ++j)
     {
+        if([self.tableView numberOfRowsInSection:j] > 0){
         for (NSInteger i = 0; i < [self.tableView numberOfRowsInSection:j]; ++i)
         {
             if(j == 1){
             [cells addObject:[self.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:i inSection:j]]];
             }
+            
+            if(j == 0){
+            [cellsS0 addObject:[self.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:i inSection:j]]];
+            }
+        }
         }
     }
     
-    for(int i = 0; i < [cells count]; i++){
-        [self checkReachabilityForItemAtIndexPath:[NSIndexPath indexPathForRow:i inSection:1] AndCell:[cells objectAtIndex:i]];
-        NSLog(@"i is: %i", i);
+    if(cells == nil){
+        for(int i = 0; i < [cells count]; i++){
+            [self checkReachabilityForItemAtIndexPath:[NSIndexPath indexPathForRow:i inSection:1] AndCell:[cells objectAtIndex:i]];
+            NSLog(@"checking cell: %@", [[[cells objectAtIndex:i] textLabel] text]);
+        }
     }
+    
+    if(cellsS0 == nil){
+        for (int i = 0; i < [cellsS0 count]; i++){
+            [self checkReachabilityForItemAtIndexPath:[NSIndexPath indexPathForRow:i inSection:0] AndCell:[cells objectAtIndex:i]];
+            NSLog(@"checking cell: %@", [[[cellsS0 objectAtIndex:i] textLabel] text]);
+        }
+    }
+    
+    
 
     
     [self.tableView reloadData];
+    [self.tableView reloadInputViews];
+    
 }
 
 
